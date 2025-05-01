@@ -1,45 +1,64 @@
-# 🌊 OceanPulse - Frontend
+# 🌊 OceanPulse - Backend
 
-OceanPulse is a mobile application designed to improve the safety and awareness of fishermen by delivering real-time weather alerts, emergency broadcasting, user location tracking, and community engagement tools. This repository contains the frontend source code built with **React Native** and **Expo**.
+This is the backend server for **OceanPulse**, a mobile application that enhances the safety and communication of fishermen at sea. The backend is built with **Node.js**, **Express**, and **MongoDB**, following the **MVC (Model-View-Controller)** architecture to ensure scalability and maintainability.
 
 ## 🚀 Features
 
-- 📍 Real-time GPS location tracking  
-- 🌦️ Live weather alerts for fishermen  
-- 🆘 Emergency broadcasting functionality  
-- 👤 User registration, login, and profile management  
-- 🔐 OTP verification and password reset system  
-- ⚙️ Profile editing and update support  
-- 💬 **Chat Feature**: Instant messaging between users for collaboration and support  
-- 🧑‍🤝‍🧑 **Community Feature**:
-  - 📢 Create and share public posts  
-  - 💬 Add comments to posts  
-  - ❤️ Like posts to show support  
+- 👤 User Authentication & Authorization  
+  - User registration, login, and logout  
+  - OTP-based account verification  
+  - Password reset flow  
+- 📄 Profile Management  
+  - View and update user profile information  
+- 🆘 Emergency Broadcast System  
+  - Fishermen can send emergency alerts to authorities or other users  
+- 🌦️ Real-time Weather Alerts  
+  - Server pushes location-based weather alerts to users  
+- 📍 Location Sharing  
+  - Users share their real-time GPS location  
+- 💬 **Chat System**  
+  - Real-time messaging using WebSocket (Socket.io)  
+- 🧑‍🤝‍🧑 **Community Forum**  
+  - Create public posts, comment, and like  
 
 ## 🛠 Tech Stack
 
-- **Framework**: React Native (Expo)
-- **State Management**: React Context / useState
-- **Navigation**: React Navigation
-- **API Communication**: Axios
-- **Backend**: Node.js + Express (see [OceanPulse Backend](https://github.com/yourusername/oceanpulse-backend))
-- **Database**: MongoDB
+- **Runtime**: Node.js
+- **Framework**: Express.js
+- **Database**: MongoDB + Mongoose
+- **Authentication**: JWT + OTP
+- **Real-Time Communication**: Socket.io
+- **Architecture**: MVC (Model-View-Controller)
+- **Environment Management**: dotenv
+- **Validation**: express-validator
+
+## 📁 Folder Structure
+
+```
+src/
+├── controllers/    # Route handlers / business logic
+├── models/         # Mongoose data models
+├── routes/         # Express route definitions
+├── middleware/     # Custom middleware (auth, error handling)
+├── services/       # External API calls (weather, etc.)
+├── utils/          # Utility functions
+└── config/         # Database and app configuration
+```
 
 ## 📲 Getting Started
 
 ### Prerequisites
 
 - Node.js & npm
-- Expo CLI (`npm install -g expo-cli`)
-- A physical device or emulator for testing
+- MongoDB (local or Atlas)
 
 ### Installation
 
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/oceanpulse-frontend.git
-cd oceanpulse-frontend
+git clone https://github.com/yourusername/oceanpulse-backend.git
+cd oceanpulse-backend
 ```
 
 2. Install dependencies:
@@ -48,54 +67,31 @@ cd oceanpulse-frontend
 npm install
 ```
 
-3. Start the development server:
-
-```bash
-expo start
-```
-
-4. Run the app on your device using the Expo Go app (Android/iOS) or emulator.
-
-### 📁 Folder Structure
-
-```
-src/
-├── app/                # Screens and Views
-├── components/         # Reusable UI components
-├── context/            # Global state/context providers
-├── services/           # API calls and external services
-├── assets/             # Images and static resources
-└── utils/              # Utility functions
-```
-
-## 🔐 Environment Variables
-
-Create a `.env` file at the root with:
+3. Set environment variables in a `.env` file:
 
 ```env
-API_URL=https://your-api-url.com
+PORT=5000
+MONGO_URI=your-mongodb-connection-string
+JWT_SECRET=your-jwt-secret
 ```
 
-Use a package like `react-native-dotenv` or inline config where needed.
+4. Run the server:
+
+```bash
+npm start
+```
 
 ## 🧪 Testing
 
-Basic testing can be done via Expo Go or emulator. Automated testing (optional) can be integrated using Jest or Detox.
+You can test endpoints using Postman or Swagger.
 
 ## 📦 Deployment
 
-To build a production APK or IPA:
-
-```bash
-eas build --platform android
-eas build --platform ios
-```
-
-Make sure you're logged in to Expo and have configured `eas.json`.
+You can deploy the app on Render, Railway, Heroku, or a VPS. Ensure environment variables are set and MongoDB is accessible.
 
 ## 🧑‍💻 Contributing
 
-Contributions are welcome! Please fork the repo and open a pull request. For major changes, open an issue first.
+Contributions are welcome. Please fork the repo and open a PR. For significant changes, open an issue for discussion first.
 
 ## 📄 License
 
@@ -105,8 +101,8 @@ This project is licensed under the MIT License.
 
 - Developer: Dinuka
 - Email: your-email@example.com
-- Project: [OceanPulse Backend](https://github.com/yourusername/oceanpulse-backend)
+- Project: [OceanPulse Frontend](https://github.com/yourusername/oceanpulse-frontend)
 
 ---
 
-Made with ❤️ for the safety and connection of our coastal communities.
+Made with ❤️ to protect lives at sea.

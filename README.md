@@ -100,7 +100,7 @@ This project is licensed under the MIT License.
 ## 📬 Contact
 
 - Developer: Dinuka
-- Email: your-email@example.com
+- Email: your-infodinukalk@gmail.com
 - Project: [OceanPulse Frontend](https://github.com/yourusername/oceanpulse-frontend)
 
 ---

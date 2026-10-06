@@ -25,12 +25,6 @@ app.use(express.json());
 // app.use(bodyParser.json());
 app.use(cors());
 
-// Database connection
-mongoose
-  .connect(config.mongoUri)
-  .then(() => console.log("Connected to the database"))
-  .catch((error) => console.log("Database connection error:", error));
-
 // Routes
 app.use("/api/v1/users", userRoute);
 app.use("/api/v1/boatLocations", boatLocationRoute);
@@ -40,13 +34,24 @@ app.use("/api/v1/weatherLogs", weatherLogRoute);
 app.use("/api/v1/riskPredictions", riskPredictionRoute);
 app.use("/api/v1/communityAlerts", communityAlertRoute);
 
-// Error handling middleware
-app.use(errorHandler);
 app.get('/api/v1/test', (req, res) => {
   res.send({ message: 'Backend is reachable!' });
 });
 
+// Error handling middleware
+app.use(errorHandler);
 
-app.listen(config.port, () => {
-  console.log(`Server is running on port ${config.port}`);
-});
+async function start() {
+  try {
+    await mongoose.connect(config.mongoUri);
+    console.log('Connected to the database');
+    app.listen(config.port, () => {
+      console.log(`Server is running on port ${config.port}`);
+    });
+  } catch (error) {
+    console.error('Database connection error:', error);
+    process.exitCode = 1;
+  }
+}
+
+start();

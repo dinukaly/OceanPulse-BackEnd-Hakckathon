@@ -1,11 +1,29 @@
 import User from "../model/UserSchema.js";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import { successResponse } from "../utils/responseHandler.js";
 import { AppError } from "../middleware/errorHandler.js";
-import { config } from "../config/env.js";
+import { clearVerification, issueVerification, verifyCode } from '../utils/verification.js';
+import { requireEmailDelivery, sendVerificationEmail } from '../services/verificationEmail.js';
+import { generateAccessToken, generateResetToken, verifyJwt } from '../utils/jwt.js';
 
-const generateOtp = () => Math.floor(10000 + Math.random() * 90000);
+const assertPassword = (password) => {
+  if (typeof password !== 'string' || !/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(password)) {
+    throw new AppError('Password must have at least 8 characters, a letter and a number', 400);
+  }
+};
+
+const deliverCode = async (user, purpose) => {
+  requireEmailDelivery();
+  const code = issueVerification(user, purpose);
+  await user.save();
+  try {
+    await sendVerificationEmail(user.email, code, purpose);
+  } catch (error) {
+    clearVerification(user);
+    await user.save();
+    throw error;
+  }
+};
 
 const generateUsername = (firstName, lastName) => {
   const randomDigits = Math.floor(1000 + Math.random() * 9000);
@@ -22,27 +40,15 @@ const formatUserResponse = (user) => ({
   isActive: user.isActive,
 });
 
-// Generate JWT token
-const generateToken = (user) => {
-  return jwt.sign(
-    { userId: user._id, username: user.username },
-    config.jwtSecret,
-    { expiresIn: "90d" }
-  );
-};
-
-// Generate reset token with short expiration
-const generateResetToken = (user) => {
-  return jwt.sign(
-    { userId: user._id, email: user.email, purpose: "reset-password" },
-    config.jwtSecret,
-    { expiresIn: "1h" }
-  );
-};
-
 const registerUser = async (req, res, next) => {
   try {
     const { firstName, lastName, email, boatId, contact, password } = req.body;
+    if (typeof firstName !== 'string' || !firstName.trim() || typeof lastName !== 'string' || !lastName.trim() ||
+        typeof email !== 'string' || !email.includes('@') || typeof contact !== 'string' || !contact.trim()) {
+      throw new AppError('Name, email and contact are required', 400);
+    }
+    assertPassword(password);
+    requireEmailDelivery();
 
     const existingEmail = await User.findOne({ email });
     if (existingEmail) {
@@ -58,33 +64,24 @@ const registerUser = async (req, res, next) => {
     const salt = bcrypt.genSaltSync(10);
     const hashedPassword = bcrypt.hashSync(password, salt);
 
-    const otp = generateOtp();
-    console.log(`Generated OTP: ${otp}`);
-
     const newUser = new User({
       username,
       firstName,
       lastName,
       email,
       contact,
-      otp: otp.toString(),
       password: hashedPassword,
       boatId,
       isActive: false,
     });
 
-    await newUser.save();
-
-    // Generate token after registration
-    const token = generateToken(newUser);
+    await deliverCode(newUser, 'account');
 
     successResponse(
       res,
       {
         message: "User registered successfully, please verify OTP",
         user: formatUserResponse(newUser),
-        token,
-        otp, // In production, remove OTP from response and send via email
       },
       201
     );
@@ -101,15 +98,15 @@ const verifyOtp = async (req, res, next) => {
       throw new AppError("User not found", 404);
     }
 
-    if (user.otp !== otp.toString()) {
-      throw new AppError("Invalid OTP", 400);
+    if (user.isActive) {
+      throw new AppError('Account is already verified', 400);
     }
-
+    await verifyCode(user, 'account', otp);
     user.isActive = true;
     await user.save();
 
     // Generate new token after OTP verification
-    const token = generateToken(user);
+    const token = generateAccessToken(user);
 
     successResponse(res, {
       message: "OTP verified successfully. User account is now active.",
@@ -134,15 +131,12 @@ const verifyResetOtp = async (req, res, next) => {
       throw new AppError("User not found", 404);
     }
 
-    if (user.otp !== otp.toString()) {
-      throw new AppError("Invalid OTP", 400);
-    }
+    await verifyCode(user, 'password-reset', otp);
 
     // Generate a special short-lived token for password reset
     const resetToken = generateResetToken(user);
 
     // Clear the OTP after successful verification
-    user.otp = "";
     await user.save();
 
     successResponse(res, {
@@ -163,11 +157,12 @@ const resetPassword = async (req, res, next) => {
     if (!email || !password || !resetToken) {
       throw new AppError("Email, password and reset token are required", 400);
     }
+    assertPassword(password);
 
     // Verify reset token
     let decoded;
     try {
-      decoded = jwt.verify(resetToken, config.jwtSecret);
+      decoded = verifyJwt(resetToken);
     } catch (error) {
       throw new AppError("Invalid or expired reset token", 401);
     }
@@ -181,11 +176,16 @@ const resetPassword = async (req, res, next) => {
     if (!user) {
       throw new AppError("User not found", 404);
     }
+    if (decoded.userId !== user._id.toString() || decoded.resetVersion !== (user.resetVersion || 0)) {
+      throw new AppError('Invalid reset token', 401);
+    }
 
     // Update password
     const salt = bcrypt.genSaltSync(10);
     const hashedPassword = bcrypt.hashSync(password, salt);
     user.password = hashedPassword;
+    user.authVersion = (user.authVersion || 0) + 1;
+    user.resetVersion = (user.resetVersion || 0) + 1;
     await user.save();
 
     successResponse(res, {
@@ -200,6 +200,9 @@ const resetPassword = async (req, res, next) => {
 const loginUser = async (req, res, next) => {
   try {
     const { email, password } = req.body;
+    if (typeof email !== 'string' || typeof password !== 'string') {
+      throw new AppError('Email and password are required', 400);
+    }
     const user = await User.findOne({ email });
     if (!user) {
       throw new AppError("User not found", 404);
@@ -210,13 +213,17 @@ const loginUser = async (req, res, next) => {
       throw new AppError("Invalid password", 401);
     }
 
-    const token = generateToken(user);
+    if (user.otp) {
+      user.otp = undefined;
+      await user.save();
+    }
 
-    successResponse(res, {
-      message: "Login successful",
-      token,
-      user: formatUserResponse(user),
-    });
+    if (!user.isActive) {
+      successResponse(res, { message: 'Account verification required', requiresVerification: true, user: formatUserResponse(user) });
+      return;
+    }
+
+    successResponse(res, { message: 'Login successful', token: generateAccessToken(user), user: formatUserResponse(user) });
   } catch (error) {
     next(error);
   }
@@ -231,20 +238,27 @@ const forgotPassword = async (req, res, next) => {
     }
 
     const user = await User.findOne({ email });
-    if (!user) {
-      throw new AppError("User with this email does not exist", 404);
+    if (user) {
+      user.resetVersion = (user.resetVersion || 0) + 1;
+      await deliverCode(user, 'password-reset');
     }
+    successResponse(res, { message: 'If the account exists, a password reset code has been sent' });
+  } catch (error) {
+    next(error);
+  }
+};
 
-    const newOtp = generateOtp();
-    user.otp = newOtp.toString();
-    await user.save();
-
-    console.log(`Forgot Password OTP for ${email}: ${newOtp}`);
-
-    successResponse(res, {
-      message: "OTP sent to your email",
-      otp: newOtp, // i n production, send this OTP via email because sendgrid not work as expected
-    });
+const resendVerification = async (req, res, next) => {
+  try {
+    const { username, email } = req.body;
+    if (!username || !email) {
+      throw new AppError('Username and email are required', 400);
+    }
+    const user = await User.findOne({ username, email });
+    if (user && !user.isActive) {
+      await deliverCode(user, 'account');
+    }
+    successResponse(res, { message: 'If the account needs verification, a code has been sent' });
   } catch (error) {
     next(error);
   }
@@ -323,6 +337,7 @@ export default {
   loginUser,
   fetchUsers,
   forgotPassword,
+  resendVerification,
   getUserProfile,
   updateUserProfile,
 };

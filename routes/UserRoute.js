@@ -7,6 +7,7 @@ const router = express.Router();
 // Public routes (no authentication required)
 router.post('/register', UserController.registerUser);
 router.post('/verify-otp', UserController.verifyOtp);
+router.post('/resend-verification-otp', UserController.resendVerification);
 router.post('/verify-reset-otp', UserController.verifyResetOtp);
 router.post('/reset-password', UserController.resetPassword);
 router.post('/login', UserController.loginUser);

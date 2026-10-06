@@ -21,7 +21,7 @@ const [{ default: User }, { default: Message }, { default: BoatLocation },
 const alice = '507f1f77bcf86cd799439011';
 const bob = '507f1f77bcf86cd799439012';
 const inactive = '507f1f77bcf86cd799439013';
-const token = (id) => jwt.sign({ userId: id, username: 'untrusted-token-name' }, process.env.JWT_SECRET_KEY);
+const token = (id) => jwt.sign({ userId: id, purpose: 'access', authVersion: 0 }, process.env.JWT_SECRET_KEY);
 
 const originals = {
   findUser: User.findById,
@@ -46,8 +46,8 @@ let savedSos;
 let sosQuery;
 
 User.findById = (id) => ({
-  select: async () => id === inactive ? { _id: id, username: 'inactive', isActive: false }
-    : id === alice || id === bob ? { _id: id, username: id === alice ? 'alice' : 'bob', isActive: true }
+  select: async () => id === inactive ? { _id: id, username: 'inactive', isActive: false, authVersion: 0 }
+    : id === alice || id === bob ? { _id: id, username: id === alice ? 'alice' : 'bob', isActive: true, authVersion: 0 }
       : null,
 });
 Message.prototype.save = async function () { savedMessage = this; return this; };

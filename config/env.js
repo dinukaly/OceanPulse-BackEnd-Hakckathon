@@ -14,6 +14,8 @@ export const config = {
     mongoUri: process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/oceanpulse_db",
     jwtSecret: process.env.JWT_SECRET_KEY,
     weatherApiKey: process.env.WEATHER_API_KEY,
+    sendgridApiKey: process.env.SENDGRID_API_KEY,
+    sendgridFromEmail: process.env.SENDGRID_FROM_EMAIL,
     nodeEnv: process.env.NODE_ENV || 'development'
 };
 

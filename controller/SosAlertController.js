@@ -3,6 +3,14 @@ import { successResponse } from '../utils/responseHandler.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { actorId, requireMatchingIdentity } from '../utils/actor.js';
 
+const receipt = (alert, alreadyActive) => ({
+    id: String(alert._id),
+    receivedAt: alert.timestamp ?? null,
+    status: 'recorded',
+    responderNotified: false,
+    alreadyActive
+});
+
 const saveSosMessage = async (req, res, next) => {
     try {
         const { latitude, longitude } = req.body;
@@ -16,7 +24,8 @@ const saveSosMessage = async (req, res, next) => {
 
         const existingMessage = await SosAlert.findOne({ userId, isHandled: false });
         if (existingMessage) {
-            throw new AppError('Active SOS alert already exists for this user', 400);
+            successResponse(res, receipt(existingMessage, true));
+            return;
         }
 
         const newMessage = new SosAlert({
@@ -30,7 +39,7 @@ const saveSosMessage = async (req, res, next) => {
 
         const savedMessage = await newMessage.save();
         
-        successResponse(res, savedMessage, 201);
+        successResponse(res, receipt(savedMessage, false), 201);
     } catch (error) {
         next(error);
     }

@@ -133,8 +133,26 @@ test('community authors are derived from the account', async () => {
 
 test('SOS records use the actor and responder operations stay closed', async () => {
   assert.equal((await request('/sosAlerts/sos', { method: 'POST', body: { userId: bob, username: 'bob', latitude: 0, longitude: 0 } })).status, 403);
-  assert.equal((await request('/sosAlerts/sos', { method: 'POST', body: { latitude: 0, longitude: 0 } })).status, 201);
+  const first = await request('/sosAlerts/sos', { method: 'POST', body: { latitude: 0, longitude: 0 } });
+  assert.equal(first.status, 201);
+  assert.equal(first.body.data.status, 'recorded');
+  assert.equal(first.body.data.responderNotified, false);
+  assert.equal(first.body.data.alreadyActive, false);
+  assert.equal(first.body.data.id, String(savedSos._id));
   assert.equal(savedSos.userId, alice);
+  const originalSave = SosAlert.prototype.save;
+  SosAlert.findOne = async () => savedSos;
+  SosAlert.prototype.save = async () => { throw new Error('Duplicate SOS must not be saved'); };
+  try {
+    const retry = await request('/sosAlerts/sos', { method: 'POST', body: { latitude: 0, longitude: 0 } });
+    assert.equal(retry.status, 200);
+    assert.equal(retry.body.data.id, first.body.data.id);
+    assert.equal(retry.body.data.alreadyActive, true);
+    assert.equal(retry.body.data.responderNotified, false);
+  } finally {
+    SosAlert.findOne = async () => null;
+    SosAlert.prototype.save = originalSave;
+  }
   assert.equal((await request('/sosAlerts/active')).status, 200);
   assert.deepEqual(sosQuery, { userId: alice, isHandled: false });
   assert.equal((await request('/sosAlerts/any/status', { method: 'PATCH', body: { isHandled: true } })).status, 403);

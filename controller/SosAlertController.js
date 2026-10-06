@@ -1,16 +1,20 @@
 import SosAlert from "../model/SosAlertSchema.js";
 import { successResponse } from '../utils/responseHandler.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { actorId, requireMatchingIdentity } from '../utils/actor.js';
 
 const saveSosMessage = async (req, res, next) => {
     try {
-        const { latitude, longitude, userId, username } = req.body;
+        const { latitude, longitude } = req.body;
+        const userId = requireMatchingIdentity(req, req.body.userId, req.body.username);
+        const username = req.user.username;
 
-        if (!latitude || !longitude || !userId || !username) {
-            throw new AppError('Latitude, longitude, userId, and username are required', 400);
+        if (typeof latitude !== 'number' || !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+            typeof longitude !== 'number' || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+            throw new AppError('Valid latitude and longitude are required', 400);
         }
 
-        const existingMessage = await SosAlert.findOne({ username, isHandled: false });
+        const existingMessage = await SosAlert.findOne({ userId, isHandled: false });
         if (existingMessage) {
             throw new AppError('Active SOS alert already exists for this user', 400);
         }
@@ -34,22 +38,7 @@ const saveSosMessage = async (req, res, next) => {
 
 const updateSosStatus = async (req, res, next) => {
     try {
-        const { messageId } = req.params;
-        const { isHandled } = req.body;
-
-        if (typeof isHandled !== 'boolean') {
-            throw new AppError('isHandled status must be a boolean', 400);
-        }
-
-        const message = await SosAlert.findById(messageId);
-        if (!message) {
-            throw new AppError('SOS message not found', 404);
-        }
-
-        message.isHandled = isHandled;
-        await message.save();
-
-        successResponse(res, message);
+        throw new AppError('SOS status updates require a responder workflow', 403);
     } catch (error) {
         next(error);
     }
@@ -57,7 +46,7 @@ const updateSosStatus = async (req, res, next) => {
 
 const getActiveSosAlerts = async (req, res, next) => {
     try {
-        const alerts = await SosAlert.find({ isHandled: false })
+        const alerts = await SosAlert.find({ userId: actorId(req), isHandled: false })
             .sort({ timestamp: -1 });
 
         successResponse(res, alerts);

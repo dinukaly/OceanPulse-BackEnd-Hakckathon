@@ -1,6 +1,7 @@
 import CommunityAlert from "../model/CommunityAlertSchema.js";
 import { successResponse } from '../utils/responseHandler.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { requireMatchingIdentity } from '../utils/actor.js';
 
 const getAllPosts = async (req, res, next) => {
     try {
@@ -31,10 +32,12 @@ const getAllPosts = async (req, res, next) => {
 
 const createPost = async (req, res, next) => {
     try {
-        const { content, imageUrl, userId, username } = req.body;
+        const { content, imageUrl } = req.body;
+        const userId = requireMatchingIdentity(req, req.body.userId, req.body.username);
+        const username = req.user.username;
 
-        if (!content || !userId || !username) {
-            throw new AppError('Content, user ID, and username are required', 400);
+        if (typeof content !== 'string' || !content.trim()) {
+            throw new AppError('Content is required', 400);
         }
 
         const newPost = new CommunityAlert({
@@ -84,10 +87,12 @@ const likePost = async (req, res, next) => {
 
 const commentOnPost = async (req, res, next) => {
     try {
-        const { content, userId, username } = req.body;
+        const { content } = req.body;
+        const userId = requireMatchingIdentity(req, req.body.userId, req.body.username);
+        const username = req.user.username;
         
-        if (!content || !userId || !username) {
-            throw new AppError('Content, user ID, and username are required', 400);
+        if (typeof content !== 'string' || !content.trim()) {
+            throw new AppError('Content is required', 400);
         }
 
         const post = await CommunityAlert.findById(req.params.postId);

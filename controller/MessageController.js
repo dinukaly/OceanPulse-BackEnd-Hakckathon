@@ -1,17 +1,16 @@
 import Message from '../model/MessageSchema.js';
 import { successResponse } from '../utils/responseHandler.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { actorId, requireMatchingIdentity } from '../utils/actor.js';
 
 const MessageController = {
   sendMessage: async (req, res, next) => {
-    console.log('POST /messages/send - Request received!');
-    console.log('Request Headers:', req.headers);
-    console.log('Request Body:', req.body);
     try {
-      const { senderId, receiverId, message } = req.body;
+      const { receiverId, message } = req.body;
+      const senderId = requireMatchingIdentity(req, req.body.senderId);
 
-      if (!senderId || !receiverId || !message) {
-        throw new AppError('Sender ID, receiver ID and message are required', 400);
+      if (typeof receiverId !== 'string' || !receiverId.trim() || typeof message !== 'string' || !message.trim()) {
+        throw new AppError('Receiver ID and message are required', 400);
       }
 
       const newMessage = new Message({
@@ -42,6 +41,9 @@ const MessageController = {
       if (!user1 || !user2) {
         throw new AppError('Both user IDs are required', 400);
       }
+      if (user1 !== actorId(req) && user2 !== actorId(req)) {
+        throw new AppError('Cannot read another conversation', 403);
+      }
 
       const messages = await Message.find({
         $or: [
@@ -71,15 +73,16 @@ const MessageController = {
   markMessagesAsRead: async (req, res, next) => {
     try {
       const { messageIds, userId } = req.body;
+      const receiverId = requireMatchingIdentity(req, userId);
 
-      if (!messageIds || !Array.isArray(messageIds) || !userId) {
-        throw new AppError('Valid message IDs array and user ID are required', 400);
+      if (!Array.isArray(messageIds) || messageIds.length === 0) {
+        throw new AppError('A non-empty message IDs array is required', 400);
       }
 
       const result = await Message.updateMany(
         {
           _id: { $in: messageIds },
-          receiverId: userId,
+          receiverId,
           read: { $ne: true },
         },
         { $set: { read: true, readAt: new Date() } }

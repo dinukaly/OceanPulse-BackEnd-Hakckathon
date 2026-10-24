@@ -10,6 +10,9 @@ import { config } from './config/env.js';
 import { AppError, errorHandler } from './middleware/errorHandler.js';
 import AuthRateLimit from './model/AuthRateLimitSchema.js';
 import SosAlert from './model/SosAlertSchema.js';
+import Message from './model/MessageSchema.js';
+import { createServer } from 'node:http';
+import { attachMessageSocket } from './realtime/messageSocket.js';
 
 // Routes
 import userRoute from "./routes/UserRoute.js";
@@ -52,8 +55,12 @@ async function start() {
     // createIndexes also enforces this gate when automatic indexing is disabled.
     await SosAlert.init();
     await SosAlert.createIndexes();
+    await Message.init();
+    await Message.createIndexes(); // Retry safety requires the unique index before accepting sends.
     console.log('Connected to the database');
-    app.listen(config.port, () => {
+    const server = createServer(app);
+    attachMessageSocket(server);
+    server.listen(config.port, () => {
       console.log(`Server is running on port ${config.port}`);
     });
   } catch (error) {

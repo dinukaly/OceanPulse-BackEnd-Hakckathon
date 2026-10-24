@@ -52,7 +52,11 @@ User.findById = (id) => ({
       : null,
 });
 Message.prototype.save = async function () { savedMessage = this; return this; };
-Message.find = (query) => { messageQuery = query; return { sort: () => ({ limit: () => ({ lean: async () => [] }) }) }; };
+Message.find = (query) => {
+  messageQuery = query;
+  const result = { sort: () => result, limit: () => result, lean: async () => [] };
+  return result;
+};
 Message.updateMany = async (query) => { readQuery = query; return { modifiedCount: 1 }; };
 BoatLocation.findOneAndUpdate = async (query, update) => { locationQuery = { query, update }; return update; };
 BoatLocation.findOne = async ({ userId }) => ({ userId, location: { coordinates: [0, 0] } });

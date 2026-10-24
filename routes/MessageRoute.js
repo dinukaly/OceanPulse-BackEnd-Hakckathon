@@ -7,5 +7,7 @@ const router = express.Router();
 router.post('/send', authenticateToken, MessageController.sendMessage);
 router.get('/get', authenticateToken, MessageController.getMessages);
 router.post('/mark-read', authenticateToken, MessageController.markMessagesAsRead);
+router.post('/receipts', authenticateToken, MessageController.getReceipts);
+router.post('/unread', authenticateToken, MessageController.getUnreadCounts);
 
 export default router;

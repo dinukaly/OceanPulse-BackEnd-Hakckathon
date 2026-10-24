@@ -11,6 +11,19 @@ export const verifyToken = (token) => {
   }
 };
 
+// HTTP and WebSocket sessions must enforce the same account/version policy.
+export const authenticateAccessToken = async (token) => {
+  const decoded = verifyToken(token);
+  if (decoded.purpose !== 'access' || !mongoose.isValidObjectId(decoded.userId)) {
+    throw new AppError('Invalid token', 401);
+  }
+  const user = await User.findById(decoded.userId).select('_id username isActive authVersion');
+  if (!user || !user.isActive || decoded.authVersion !== (user.authVersion || 0)) {
+    throw new AppError('Account is not active', 401);
+  }
+  return { userId: user._id.toString(), username: user.username, expiresAt: decoded.exp };
+};
+
 export const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = /^Bearer (\S+)$/i.exec(authHeader || '')?.[1];
@@ -20,15 +33,8 @@ export const authenticateToken = async (req, res, next) => {
   }
 
   try {
-    const decoded = verifyToken(token);
-    if (decoded.purpose !== 'access' || !mongoose.isValidObjectId(decoded.userId)) {
-      throw new AppError('Invalid token', 401);
-    }
-    const user = await User.findById(decoded.userId).select('_id username isActive authVersion');
-    if (!user || !user.isActive || decoded.authVersion !== (user.authVersion || 0)) {
-      throw new AppError('Account is not active', 401);
-    }
-    req.user = { userId: user._id.toString(), username: user.username };
+    const user = await authenticateAccessToken(token);
+    req.user = { userId: user.userId, username: user.username };
     next(); 
   } catch (error) {
     next(error); 

@@ -19,6 +19,14 @@ const originals = {
   send: sgMail.send,
   setApiKey: sgMail.setApiKey,
 };
+const { default: AuthRateLimit } = await import('../model/AuthRateLimitSchema.js');
+const originalCounter = AuthRateLimit.findOneAndUpdate;
+const counters = new Map();
+AuthRateLimit.findOneAndUpdate = async ({ _id }) => {
+  const count = (counters.get(_id) || 0) + 1;
+  counters.set(_id, count);
+  return { count };
+};
 const users = new Map();
 const emails = [];
 
@@ -58,10 +66,11 @@ after(async () => {
   User.prototype.save = originals.save;
   sgMail.send = originals.send;
   sgMail.setApiKey = originals.setApiKey;
+  AuthRateLimit.findOneAndUpdate = originalCounter;
 });
 
 test('verification and reset codes are emailed, limited, and invalidate old sessions', async () => {
-  const identity = { firstName: 'Test', lastName: 'Fisher', email: 'fisher@example.com', contact: '+94771234567', password: 'Password123' };
+  const identity = { firstName: 'Test', lastName: 'Fisher', email: 'fisher@example.com', contact: '+94771234567', password: 'Password123', boatId: '' };
   const registered = await request('/users/register', { method: 'POST', body: identity });
   assert.equal(registered.status, 201);
   assert.equal(registered.body.data.token, undefined);
@@ -115,4 +124,72 @@ test('five wrong codes lock the current code window, including resends', async (
   user.verificationSentAt = new Date(Date.now() - 61_000);
   assert.throws(() => verification.issueVerification(user, 'account'), { statusCode: 429 });
   await assert.rejects(verification.verifyCode(user, 'account', code), { statusCode: 400 });
+});
+
+test('auth routes reject malformed and query-operator inputs before database lookup', async () => {
+  let queries = 0;
+  const lookup = User.findOne;
+  User.findOne = async () => { queries++; throw new Error('Must not query'); };
+  try {
+    for (const [path, body] of [
+      ['login', { email: { $ne: null }, password: 'Password123' }],
+      ['LOGIN/', { email: { $ne: null }, password: 'Password123' }],
+      ['login', { email: 'bad-email', password: 'Password123' }],
+      ['login', { email: 'test@example.com', password: 'é'.repeat(37) }],
+      ['verify-otp', { username: { $gt: '' }, otp: '123456' }],
+      ['verify-reset-otp', { email: 'test@example.com', otp: 123456 }],
+      ['forgot-password', { email: ['test@example.com'] }],
+      ['resend-verification-otp', { username: 'test', email: { $ne: null } }],
+      ['reset-password', { email: 'test@example.com', password: 'Password123', resetToken: {} }],
+      ['register', { firstName: 'Test', lastName: 'Fisher', email: 'test@example.com', contact: {}, password: 'Password123' }],
+    ]) {
+      assert.equal((await request(`/users/${path}`, { method: 'POST', body })).status, 400, path);
+    }
+    assert.equal(queries, 0);
+  } finally { User.findOne = lookup; }
+});
+
+test('codes expire, are purpose-bound and cannot be reused after successful verification', async () => {
+  const user = { _id: '507f1f77bcf86cd799439015', save: async () => {} };
+  const code = verification.issueVerification(user, 'account');
+  await assert.rejects(verification.verifyCode(user, 'password-reset', code), { statusCode: 400 });
+  user.verificationExpiresAt = new Date(Date.now() - 1);
+  await assert.rejects(verification.verifyCode(user, 'account', code), { statusCode: 400 });
+  user.verificationSentAt = new Date(Date.now() - 61_000);
+  const replacement = verification.issueVerification(user, 'account');
+  assert.equal(user.verificationAttempts, 0);
+  await verification.verifyCode(user, 'account', replacement);
+  await assert.rejects(verification.verifyCode(user, 'account', replacement), { statusCode: 400 });
+});
+
+test('login conceals whether the email or password was incorrect', async () => {
+  const unknown = await request('/users/login', { method: 'POST', body: { email: 'unknown@example.com', password: 'Password123' } });
+  const known = await request('/users/login', { method: 'POST', body: { email: 'fisher@example.com', password: 'Wrong123' } });
+  assert.equal(unknown.status, 401);
+  assert.equal(known.status, 401);
+  assert.equal(unknown.body.message, known.body.message);
+});
+
+test('email delivery failure never returns a usable verification code', async () => {
+  const send = sgMail.send;
+  sgMail.send = async () => { throw new Error('Provider failure'); };
+  try {
+    const failed = await request('/users/register', { method: 'POST', body: {
+      firstName: 'Test', lastName: 'Delivery', email: 'delivery@example.com', contact: '+94771234567', password: 'Password123',
+    } });
+    assert.equal(failed.status, 503);
+    const user = users.get('delivery@example.com');
+    assert.equal(user.isActive, false);
+    assert.equal(user.verificationCodeHash, undefined);
+  } finally { sgMail.send = send; }
+});
+
+test('expired access tokens and wrong signing algorithms cannot restore sessions', async () => {
+  const { default: jwt } = await import('jsonwebtoken');
+  const user = users.get('fisher@example.com');
+  const payload = { userId: user._id, purpose: 'access', authVersion: user.authVersion };
+  const expired = jwt.sign(payload, process.env.JWT_SECRET_KEY, { expiresIn: -1 });
+  const wrongAlgorithm = jwt.sign(payload, process.env.JWT_SECRET_KEY, { algorithm: 'HS384' });
+  assert.equal((await request('/users/profile', { token: expired })).status, 401);
+  assert.equal((await request('/users/profile', { token: wrongAlgorithm })).status, 401);
 });

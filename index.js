@@ -8,6 +8,7 @@ import mongoose from "mongoose";
 import cors from "cors";
 import { config } from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import AuthRateLimit from './model/AuthRateLimitSchema.js';
 
 // Routes
 import userRoute from "./routes/UserRoute.js";
@@ -44,6 +45,7 @@ app.use(errorHandler);
 async function start() {
   try {
     await mongoose.connect(config.mongoUri);
+    await AuthRateLimit.init();
     console.log('Connected to the database');
     app.listen(config.port, () => {
       console.log(`Server is running on port ${config.port}`);

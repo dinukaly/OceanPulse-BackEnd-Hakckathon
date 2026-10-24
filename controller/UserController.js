@@ -7,7 +7,7 @@ import { requireEmailDelivery, sendVerificationEmail } from '../services/verific
 import { generateAccessToken, generateResetToken, verifyJwt } from '../utils/jwt.js';
 
 const assertPassword = (password) => {
-  if (typeof password !== 'string' || !/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(password)) {
+  if (typeof password !== 'string' || Buffer.byteLength(password, 'utf8') > 72 || !/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(password)) {
     throw new AppError('Password must have at least 8 characters, a letter and a number', 400);
   }
 };
@@ -205,12 +205,12 @@ const loginUser = async (req, res, next) => {
     }
     const user = await User.findOne({ email });
     if (!user) {
-      throw new AppError("User not found", 404);
+      throw new AppError("Invalid email or password", 401);
     }
 
     const isPasswordValid = bcrypt.compareSync(password, user.password);
     if (!isPasswordValid) {
-      throw new AppError("Invalid password", 401);
+      throw new AppError("Invalid email or password", 401);
     }
 
     if (user.otp) {

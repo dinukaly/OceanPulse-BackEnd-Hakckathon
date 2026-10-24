@@ -58,6 +58,6 @@ const UserSchema = new mongoose.Schema({
   //   name: String,
   //   phone: String,
   // },
-});
+}, { optimisticConcurrency: true });
 
 export default mongoose.model("User", UserSchema);

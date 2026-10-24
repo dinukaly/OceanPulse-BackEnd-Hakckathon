@@ -13,4 +13,4 @@ export const generateResetToken = (user) => jwt.sign(
   { expiresIn: '1h' }
 );
 
-export const verifyJwt = (token) => jwt.verify(token, config.jwtSecret);
+export const verifyJwt = (token) => jwt.verify(token, config.jwtSecret, { algorithms: ['HS256'] });

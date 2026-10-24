@@ -20,7 +20,7 @@ export const config = {
 };
 
 // Validate required environment variables
-const requiredEnvVars = ['JWT_SECRET_KEY', 'WEATHER_API_KEY'];
+const requiredEnvVars = ['JWT_SECRET_KEY'];
 
 requiredEnvVars.forEach(envVar => {
     if (!process.env[envVar]) {

@@ -2,10 +2,11 @@ import BoatLocation from "../model/BoatLocationSchema.js";
 import { successResponse } from '../utils/responseHandler.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { actorId, requireMatchingIdentity } from '../utils/actor.js';
+import { objectId, jsonObject } from '../utils/validation.js';
 
 const updateLocation = async (req, res, next) => {
     try {
-        const { latitude, longitude } = req.body;
+        const { latitude, longitude } = jsonObject(req.body);
         const userId = requireMatchingIdentity(req, req.body.userId);
 
         if (typeof latitude !== 'number' || !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
@@ -34,7 +35,7 @@ const updateLocation = async (req, res, next) => {
 
 const getBoatLocation = async (req, res, next) => {
     try {
-        const { userId } = req.params;
+        const userId = objectId(req.params.userId, 'user ID');
 
         if (!userId) {
             throw new AppError('User ID is required', 400);

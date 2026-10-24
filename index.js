@@ -7,7 +7,7 @@ import bodyParser from "body-parser";
 import mongoose from "mongoose";
 import cors from "cors";
 import { config } from './config/env.js';
-import { errorHandler } from './middleware/errorHandler.js';
+import { AppError, errorHandler } from './middleware/errorHandler.js';
 import AuthRateLimit from './model/AuthRateLimitSchema.js';
 
 // Routes
@@ -40,6 +40,7 @@ app.get('/api/v1/test', (req, res) => {
 });
 
 // Error handling middleware
+app.use((req, res, next) => next(new AppError('Route not found', 404)));
 app.use(errorHandler);
 
 async function start() {

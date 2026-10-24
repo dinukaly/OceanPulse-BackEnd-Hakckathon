@@ -21,12 +21,5 @@ router.get('/profile', authenticateToken, UserController.getUserProfile);
 router.get('/users', authenticateToken, UserController.fetchUsers);
 router.put('/update-profile', authenticateToken, UserController.updateUserProfile);
 
-router.use((error, req, res, next) => {
-  if (error.name === 'VersionError') {
-    return res.status(409).json({ success: false, message: 'Account changed during this request. Please try again.' });
-  }
-  next(error);
-});
-
 
 export default router;

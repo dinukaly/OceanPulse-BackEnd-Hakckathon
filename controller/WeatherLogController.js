@@ -2,12 +2,13 @@ import WeatherLog from "../model/WeatherLogSchema.js";
 import axios from "axios";
 import { successResponse } from '../utils/responseHandler.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { text } from '../utils/validation.js';
 
 const OPENWEATHER_API_KEY = process.env.WEATHER_API_KEY;
 
 const getWeather = async (req, res, next) => {
     try {
-        const { city } = req.query;
+        const city = text(req.query.city, 'city', 100);
 
         if (!city) {
             throw new AppError('City is required', 400);
@@ -28,7 +29,9 @@ const getWeather = async (req, res, next) => {
         successResponse(res, response.data);
     } catch (error) {
         if (error.response) {
-            next(new AppError(error.response.data.message || 'Weather API error', error.response.status));
+            next(error.response.status === 404
+                ? new AppError('Weather location not found', 404)
+                : new AppError('Weather provider request failed', 502));
         } else {
             next(error);
         }

@@ -60,4 +60,5 @@ const UserSchema = new mongoose.Schema({
   // },
 }, { optimisticConcurrency: true });
 
+UserSchema.index({ isActive: 1, _id: -1 });
 export default mongoose.model("User", UserSchema);

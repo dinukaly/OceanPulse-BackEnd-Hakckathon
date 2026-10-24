@@ -28,4 +28,5 @@ const SosAlertSchema = new mongoose.Schema(
   },
 );
 
+SosAlertSchema.index({ userId: 1, isHandled: 1, _id: -1 });
 export default mongoose.model("SOSAlert", SosAlertSchema);

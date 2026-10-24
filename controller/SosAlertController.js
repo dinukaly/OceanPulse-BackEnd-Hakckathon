@@ -2,6 +2,8 @@ import SosAlert from "../model/SosAlertSchema.js";
 import { successResponse } from '../utils/responseHandler.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { actorId, requireMatchingIdentity } from '../utils/actor.js';
+import { jsonObject } from '../utils/validation.js';
+import { pagination, pageResult } from '../utils/pagination.js';
 
 const receipt = (alert, alreadyActive) => ({
     id: String(alert._id),
@@ -13,7 +15,7 @@ const receipt = (alert, alreadyActive) => ({
 
 const saveSosMessage = async (req, res, next) => {
     try {
-        const { latitude, longitude } = req.body;
+        const { latitude, longitude } = jsonObject(req.body);
         const userId = requireMatchingIdentity(req, req.body.userId, req.body.username);
         const username = req.user.username;
 
@@ -55,10 +57,12 @@ const updateSosStatus = async (req, res, next) => {
 
 const getActiveSosAlerts = async (req, res, next) => {
     try {
-        const alerts = await SosAlert.find({ userId: actorId(req), isHandled: false })
-            .sort({ timestamp: -1 });
+        const { limit, filter } = pagination(req.query);
+        const alerts = await SosAlert.find({ userId: actorId(req), isHandled: false, ...filter })
+            .sort({ _id: -1 }).limit(limit + 1).lean();
 
-        successResponse(res, alerts);
+        const page = pageResult(alerts, limit);
+        successResponse(res, page.items, 200, { pagination: page.pagination });
     } catch (error) {
         next(error);
     }

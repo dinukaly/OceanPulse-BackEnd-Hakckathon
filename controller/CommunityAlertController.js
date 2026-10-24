@@ -2,29 +2,28 @@ import CommunityAlert from "../model/CommunityAlertSchema.js";
 import { successResponse } from '../utils/responseHandler.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { requireMatchingIdentity } from '../utils/actor.js';
+import mongoose from 'mongoose';
+import { objectId, text, jsonObject } from '../utils/validation.js';
+import { pagination, pageResult } from '../utils/pagination.js';
 
 const getAllPosts = async (req, res, next) => {
     try {
-        const posts = await CommunityAlert.find().sort({ createdAt: -1 });
+        const { limit, filter } = pagination(req.query);
+        const rows = await CommunityAlert.find(filter).select('-comments').sort({ _id: -1 }).limit(limit + 1).lean();
+        const page = pageResult(rows, limit);
 
-        const formattedPosts = posts.map(post => ({
+        const formattedPosts = page.items.map(post => ({
             id: post._id.toString(),
             userId: post.userId,
             username: post.username,
             content: post.content,
             imageUrl: post.imageUrl,
             likes: post.likes,
-            comments: post.comments.map(comment => ({
-                id: comment._id?.toString() || '',
-                userId: comment.userId,
-                username: comment.username,
-                content: comment.content,
-                createdAt: comment.createdAt,
-            })),
+            comments: [], // Loaded separately through the bounded comments endpoint.
             createdAt: post.createdAt,
         }));
 
-        successResponse(res, formattedPosts);
+        successResponse(res, formattedPosts, 200, { pagination: page.pagination });
     } catch (error) {
         next(error);
     }
@@ -32,7 +31,9 @@ const getAllPosts = async (req, res, next) => {
 
 const createPost = async (req, res, next) => {
     try {
-        const { content, imageUrl } = req.body;
+        const body = jsonObject(req.body);
+        const content = text(body.content, 'content', 4000);
+        const imageUrl = body.imageUrl === undefined ? '' : text(body.imageUrl, 'image URL', 2048, true);
         const userId = requireMatchingIdentity(req, req.body.userId, req.body.username);
         const username = req.user.username;
 
@@ -68,7 +69,7 @@ const createPost = async (req, res, next) => {
 
 const likePost = async (req, res, next) => {
     try {
-        const post = await CommunityAlert.findById(req.params.postId);
+        const post = await CommunityAlert.findById(objectId(req.params.postId, 'post ID'));
         if (!post) {
             throw new AppError('Post not found', 404);
         }
@@ -87,7 +88,7 @@ const likePost = async (req, res, next) => {
 
 const commentOnPost = async (req, res, next) => {
     try {
-        const { content } = req.body;
+        const content = text(jsonObject(req.body).content, 'content', 2000);
         const userId = requireMatchingIdentity(req, req.body.userId, req.body.username);
         const username = req.user.username;
         
@@ -95,7 +96,7 @@ const commentOnPost = async (req, res, next) => {
             throw new AppError('Content is required', 400);
         }
 
-        const post = await CommunityAlert.findById(req.params.postId);
+        const post = await CommunityAlert.findById(objectId(req.params.postId, 'post ID'));
         if (!post) {
             throw new AppError('Post not found', 404);
         }
@@ -117,4 +118,27 @@ const commentOnPost = async (req, res, next) => {
     }
 };
 
-export default { getAllPosts, createPost, likePost, commentOnPost };
+const getComments = async (req, res, next) => {
+    try {
+        const id = objectId(req.params.postId, 'post ID');
+        const { limit, filter } = pagination(req.query);
+        const before = filter._id?.$lt;
+        const rows = await CommunityAlert.aggregate([
+            { $match: { _id: new mongoose.Types.ObjectId(id) } },
+            { $facet: {
+                exists: [{ $limit: 1 }, { $project: { _id: 1 } }],
+                items: [{ $unwind: '$comments' },
+                    ...(before ? [{ $match: { 'comments._id': { $lt: new mongoose.Types.ObjectId(before) } } }] : []),
+                    { $sort: { 'comments._id': -1 } }, { $limit: limit + 1 },
+                    { $replaceRoot: { newRoot: '$comments' } }],
+            } },
+        ]);
+        if (!rows[0]?.exists.length) throw new AppError('Post not found', 404);
+        const page = pageResult(rows[0].items, limit);
+        successResponse(res, page.items.map(comment => ({ id: String(comment._id), userId: comment.userId,
+            username: comment.username, content: comment.content, createdAt: comment.createdAt })),
+            200, { pagination: page.pagination });
+    } catch (error) { next(error); }
+};
+
+export default { getAllPosts, createPost, likePost, commentOnPost, getComments };

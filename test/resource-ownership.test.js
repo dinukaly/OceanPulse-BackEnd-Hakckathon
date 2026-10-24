@@ -51,7 +51,7 @@ User.findById = (id) => ({
       : null,
 });
 Message.prototype.save = async function () { savedMessage = this; return this; };
-Message.find = (query) => { messageQuery = query; return { sort: () => ({ lean: async () => [] }) }; };
+Message.find = (query) => { messageQuery = query; return { sort: () => ({ limit: () => ({ lean: async () => [] }) }) }; };
 Message.updateMany = async (query) => { readQuery = query; return { modifiedCount: 1 }; };
 BoatLocation.findOneAndUpdate = async (query, update) => { locationQuery = { query, update }; return update; };
 BoatLocation.findOne = async ({ userId }) => ({ userId, location: { coordinates: [0, 0] } });
@@ -59,7 +59,7 @@ CommunityAlert.prototype.save = async function () { savedPost = this; return thi
 CommunityAlert.findById = async () => ({ comments: [], save: async function () { return this; } });
 SosAlert.findOne = async () => null;
 SosAlert.prototype.save = async function () { savedSos = this; return this; };
-SosAlert.find = (query) => { sosQuery = query; return { sort: async () => [] }; };
+SosAlert.find = (query) => { sosQuery = query; return { sort: () => ({ limit: () => ({ lean: async () => [] }) }) }; };
 
 const app = express();
 app.use(express.json());
@@ -108,9 +108,9 @@ test('messages use the authenticated sender and allow only participants to read'
   assert.equal(savedMessage.senderId, alice);
   assert.equal((await request(`/messages/get?user1=${bob}&user2=${inactive}`)).status, 403);
   assert.equal((await request(`/messages/get?user1=${alice}&user2=${bob}`)).status, 200);
-  assert.equal(messageQuery.$or[0].senderId, alice);
+  assert.equal(messageQuery.$and[0].$or[0].senderId, alice);
   assert.equal((await request('/messages/mark-read', { method: 'POST', body: { messageIds: ['m1'], userId: bob } })).status, 403);
-  assert.equal((await request('/messages/mark-read', { method: 'POST', body: { messageIds: ['m1'] } })).status, 200);
+  assert.equal((await request('/messages/mark-read', { method: 'POST', body: { messageIds: ['507f1f77bcf86cd799439015'] } })).status, 200);
   assert.equal(readQuery.receiverId, alice);
 });
 

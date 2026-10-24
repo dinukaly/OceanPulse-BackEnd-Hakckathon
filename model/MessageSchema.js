@@ -12,7 +12,7 @@ const messageSchema = new mongoose.Schema({
 });
 
 // Indexes
-messageSchema.index({ senderId: 1, receiverId: 1 });
+messageSchema.index({ senderId: 1, receiverId: 1, _id: -1 });
 messageSchema.index({ timestamp: 1 });
 
 

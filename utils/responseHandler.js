@@ -1,13 +1,9 @@
-export const successResponse = (res, data, statusCode = 200) => {
+export const successResponse = (res, data, statusCode = 200, metadata = {}) => {
   res.status(statusCode).json({
     success: true,
-    data
+    data,
+    ...metadata,
   });
 };
 
-export const errorResponse = (res, message, statusCode = 500) => {
-  res.status(statusCode).json({
-    success: false,
-    message
-  });
-};
+export { sendError as errorResponse } from '../middleware/errorHandler.js';

@@ -5,6 +5,8 @@ import { AppError } from "../middleware/errorHandler.js";
 import { clearVerification, issueVerification, verifyCode } from '../utils/verification.js';
 import { requireEmailDelivery, sendVerificationEmail } from '../services/verificationEmail.js';
 import { generateAccessToken, generateResetToken, verifyJwt } from '../utils/jwt.js';
+import { jsonObject, text } from '../utils/validation.js';
+import { pagination, pageResult } from '../utils/pagination.js';
 
 const assertPassword = (password) => {
   if (typeof password !== 'string' || Buffer.byteLength(password, 'utf8') > 72 || !/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(password)) {
@@ -38,6 +40,9 @@ const formatUserResponse = (user) => ({
   firstName: user.firstName,
   lastName: user.lastName,
   isActive: user.isActive,
+  contact: user.contact || '',
+  language: user.language || 'Sinhala',
+  boatId: user.boatId || '',
 });
 
 const registerUser = async (req, res, next) => {
@@ -280,34 +285,29 @@ const getUserProfile = async (req, res, next) => {
 };
 const updateUserProfile = async (req, res, next) => {
   try {
-    const { firstName, lastName, contact, language, boatId } = req.body;
+    const body = jsonObject(req.body);
+    const allowed = ['firstName', 'lastName', 'contact', 'language', 'boatId'];
+    if (!Object.keys(body).length || Object.keys(body).some((field) => !allowed.includes(field))) {
+      throw new AppError('Supply only editable profile fields: firstName, lastName, contact, language, boatId', 400);
+    }
+    const update = {};
+    for (const field of Object.keys(body)) update[field] = text(body[field], field, 100, field === 'boatId');
+    if (update.language !== undefined && !['Sinhala', 'Tamil'].includes(update.language)) {
+      throw new AppError('Language must be Sinhala or Tamil', 400);
+    }
 
     const user = await User.findById(req.user.userId);
     if (!user) {
       throw new AppError("User not found", 404);
     }
 
-    user.firstName = firstName || user.firstName;
-    user.lastName = lastName || user.lastName;
-    user.contact = contact || user.contact;
-    user.language = language || user.language;
-    user.boatId = boatId || user.boatId;
+    Object.assign(user, update);
 
     await user.save();
 
     successResponse(res, {
       message: "Profile updated successfully",
-      user: {
-        userId: user._id,
-        username: user.username,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        contact: user.contact,
-        language: user.language,
-        boatId: user.boatId,
-        isActive: user.isActive,
-      },
+      user: formatUserResponse(user),
     });
   } catch (error) {
     next(error);
@@ -316,14 +316,15 @@ const updateUserProfile = async (req, res, next) => {
 
 const fetchUsers = async (req, res, next) => {
   try {
+    const { limit, filter } = pagination(req.query);
     const users = await User.find(
-      { _id: { $ne: req.user.userId } },
-      "firstName lastName email username _id isActive"
-    );
-
-    const formattedUsers = users.map((user) => formatUserResponse(user));
-
-    successResponse(res, formattedUsers);
+      { $and: [{ _id: { $ne: req.user.userId }, isActive: true }, filter] },
+      'firstName lastName username _id'
+    ).sort({ _id: -1 }).limit(limit + 1).lean();
+    const page = pageResult(users, limit);
+    const formattedUsers = page.items.map((user) => ({ userId: String(user._id),
+      firstName: user.firstName, lastName: user.lastName, username: user.username }));
+    successResponse(res, formattedUsers, 200, { pagination: page.pagination });
   } catch (error) {
     next(error);
   }

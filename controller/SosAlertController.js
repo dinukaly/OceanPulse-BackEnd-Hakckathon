@@ -4,14 +4,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { actorId, requireMatchingIdentity } from '../utils/actor.js';
 import { jsonObject } from '../utils/validation.js';
 import { pagination, pageResult } from '../utils/pagination.js';
-
-const receipt = (alert, alreadyActive) => ({
-    id: String(alert._id),
-    receivedAt: alert.timestamp ?? null,
-    status: 'recorded',
-    responderNotified: false,
-    alreadyActive
-});
+import { sosReceipt, unconfirmedReceipt } from '../utils/sosReceipt.js';
 
 const saveSosMessage = async (req, res, next) => {
     try {
@@ -24,24 +17,26 @@ const saveSosMessage = async (req, res, next) => {
             throw new AppError('Valid latitude and longitude are required', 400);
         }
 
-        const existingMessage = await SosAlert.findOne({ userId, isHandled: false });
-        if (existingMessage) {
-            successResponse(res, receipt(existingMessage, true));
+        const filter = { userId, isHandled: false };
+        let result;
+        try {
+            result = await SosAlert.findOneAndUpdate(filter, { $setOnInsert: {
+                userId, username, latitude, longitude, timestamp: new Date(), isHandled: false,
+            } }, { upsert: true, new: true, rawResult: true, runValidators: true,
+                writeConcern: { w: 'majority', wtimeout: 5000 }, maxTimeMS: 5000 });
+        } catch (error) {
+            if (error.code !== 11000 || (error.keyPattern && !error.keyPattern.userId)) throw error;
+            // Concurrent first inserts can race at the unique index. Return the winner,
+            // without performing a second insert or overwriting its receipt/location.
+            const existing = await SosAlert.findOne(filter).read('primary').readConcern('majority').maxTimeMS(5000);
+            if (!existing) throw unconfirmedReceipt();
+            successResponse(res, sosReceipt(existing, userId, true));
             return;
         }
-
-        const newMessage = new SosAlert({
-            latitude,
-            longitude,
-            userId,
-            username,
-            timestamp: new Date(),
-            isHandled: false
-        });
-
-        const savedMessage = await newMessage.save();
-        
-        successResponse(res, receipt(savedMessage, false), 201);
+        if (result?.ok !== 1 || result.lastErrorObject?.n !== 1 || !result.value ||
+            typeof result.lastErrorObject?.updatedExisting !== 'boolean') throw unconfirmedReceipt();
+        const alreadyActive = result.lastErrorObject.updatedExisting;
+        successResponse(res, sosReceipt(result.value, userId, alreadyActive), alreadyActive ? 200 : 201);
     } catch (error) {
         next(error);
     }
@@ -68,4 +63,12 @@ const getActiveSosAlerts = async (req, res, next) => {
     }
 };
 
-export default { saveSosMessage, updateSosStatus, getActiveSosAlerts };
+const getCurrentReceipt = async (req, res, next) => {
+    try {
+        const userId = actorId(req);
+        const alert = await SosAlert.findOne({ userId, isHandled: false }).read('primary').readConcern('majority').maxTimeMS(5000);
+        successResponse(res, { receipt: alert ? sosReceipt(alert, userId, true) : null });
+    } catch (error) { next(error); }
+};
+
+export default { saveSosMessage, updateSosStatus, getActiveSosAlerts, getCurrentReceipt };

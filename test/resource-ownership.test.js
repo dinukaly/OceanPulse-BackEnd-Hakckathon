@@ -34,6 +34,7 @@ const originals = {
   findPost: CommunityAlert.findById,
   findSos: SosAlert.findOne,
   saveSos: SosAlert.prototype.save,
+  upsertSos: SosAlert.findOneAndUpdate,
   listSos: SosAlert.find,
 };
 
@@ -59,6 +60,11 @@ CommunityAlert.prototype.save = async function () { savedPost = this; return thi
 CommunityAlert.findById = async () => ({ comments: [], save: async function () { return this; } });
 SosAlert.findOne = async () => null;
 SosAlert.prototype.save = async function () { savedSos = this; return this; };
+SosAlert.findOneAndUpdate = async (filter, update) => {
+  const existing = Boolean(savedSos);
+  if (!existing) savedSos = new SosAlert(update.$setOnInsert);
+  return { ok: 1, value: savedSos, lastErrorObject: { n: 1, updatedExisting: existing } };
+};
 SosAlert.find = (query) => { sosQuery = query; return { sort: () => ({ limit: () => ({ lean: async () => [] }) }) }; };
 
 const app = express();
@@ -92,6 +98,7 @@ after(async () => {
   CommunityAlert.findById = originals.findPost;
   SosAlert.findOne = originals.findSos;
   SosAlert.prototype.save = originals.saveSos;
+  SosAlert.findOneAndUpdate = originals.upsertSos;
   SosAlert.find = originals.listSos;
 });
 

@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "test:integration": "node scripts/test-integration.js"
   },
   "author": "Dinuka Liyanage",
   "license": "MIT",

@@ -142,6 +142,19 @@ test('community authors are derived from the account', async () => {
   assert.equal((await request('/communityAlerts/posts/any/comment', { method: 'POST', body: { content: 'reply', userId: bob, username: 'bob' } })).status, 403);
 });
 
+test('community rejects image references before saving while text-only posts remain available', async () => {
+  const previous = savedPost;
+  for (const imageUrl of ['file:///private/example.jpg', 'content://gallery/example', 'https://example.test/image.jpg', 'data:image/png;base64,example']) {
+    const result = await request('/communityAlerts/posts', { method: 'POST', body: { content: 'Image attempt', imageUrl } });
+    assert.equal(result.status, 400);
+    assert.equal(result.body.code, 'IMAGE_UPLOAD_UNAVAILABLE');
+    assert.equal(savedPost, previous);
+  }
+  const result = await request('/communityAlerts/posts', { method: 'POST', body: { content: 'Text only', imageUrl: '' } });
+  assert.equal(result.status, 201);
+  assert.equal(result.body.data.imageUrl, '');
+});
+
 test('SOS records use the actor and responder operations stay closed', async () => {
   assert.equal((await request('/sosAlerts/sos', { method: 'POST', body: { userId: bob, username: 'bob', latitude: 0, longitude: 0 } })).status, 403);
   const first = await request('/sosAlerts/sos', { method: 'POST', body: { latitude: 0, longitude: 0 } });

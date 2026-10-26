@@ -21,7 +21,7 @@ test('real MongoDB: list queries and embedded-comment aggregation traverse bound
     const TestPost = connection.model('PagingPost', Post.schema);
     const TestUser = connection.model('PagingUser', User.schema);
     for (const [source, replacement, method] of [[Message, TestMessage, 'find'], [Post, TestPost, 'find'],
-      [Post, TestPost, 'aggregate'], [User, TestUser, 'find']]) {
+      [Post, TestPost, 'aggregate'], [User, TestUser, 'find'], [User, TestUser, 'findById']]) {
       const original = source[method];
       source[method] = replacement[method].bind(replacement);
       undo.push(() => { source[method] = original; });
@@ -56,6 +56,18 @@ test('real MongoDB: list queries and embedded-comment aggregation traverse bound
     const directory = await invoke(userController.fetchUsers, request({ limit: '2' }));
     assert.deepEqual(directory.data.map(user => user.userId), [id(2)]);
     assert.equal(directory.data[0].email, undefined);
+    // Reload a new Mongoose document after a real profile save, then reject a stale edit.
+    const profileRequest = { user: { userId: id(1) }, body: {} };
+    const initialProfile = await invoke(userController.getUserProfile, profileRequest);
+    profileRequest.body = { firstName: 'Persisted name', boatId: '', expectedVersion: initialProfile.data.profileVersion };
+    const updatedProfile = await invoke(userController.updateUserProfile, profileRequest);
+    const reloadedProfile = await invoke(userController.getUserProfile, profileRequest);
+    assert.deepEqual(reloadedProfile.data, updatedProfile.data);
+    assert.equal(reloadedProfile.data.user.firstName, 'Persisted name');
+    assert.equal(reloadedProfile.data.user.boatId, '');
+    profileRequest.body = { firstName: 'Stale name', expectedVersion: initialProfile.data.profileVersion };
+    await assert.rejects(invoke(userController.updateUserProfile, profileRequest), { statusCode: 409 });
+    assert.equal((await TestUser.findById(id(1))).firstName, 'Persisted name');
   } finally {
     undo.reverse().forEach(restore => restore());
     await connection.dropDatabase(); // Only the unique test database created above.

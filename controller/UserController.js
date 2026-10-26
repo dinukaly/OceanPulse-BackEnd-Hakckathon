@@ -273,11 +273,12 @@ const getUserProfile = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.userId);
     if (!user) {
-      throw new AppError("User not found", 404);
+      throw new AppError('User not found', 404);
     }
 
     successResponse(res, {
       user: formatUserResponse(user),
+      profileVersion: user.__v || 0,
     });
   } catch (error) {
     next(error);
@@ -287,27 +288,54 @@ const updateUserProfile = async (req, res, next) => {
   try {
     const body = jsonObject(req.body);
     const allowed = ['firstName', 'lastName', 'contact', 'language', 'boatId'];
-    if (!Object.keys(body).length || Object.keys(body).some((field) => !allowed.includes(field))) {
-      throw new AppError('Supply only editable profile fields: firstName, lastName, contact, language, boatId', 400);
+    const fields = Object.keys(body).filter(
+      (field) => field !== 'expectedVersion',
+    );
+    if (!fields.length || fields.some((field) => !allowed.includes(field))) {
+      throw new AppError(
+        'Supply only editable profile fields: firstName, lastName, contact, language, boatId',
+        400,
+      );
     }
     const update = {};
-    for (const field of Object.keys(body)) update[field] = text(body[field], field, 100, field === 'boatId');
-    if (update.language !== undefined && !['Sinhala', 'Tamil'].includes(update.language)) {
+    for (const field of fields)
+      update[field] = text(body[field], field, 100, field === 'boatId');
+    if (
+      body.expectedVersion !== undefined &&
+      (!Number.isSafeInteger(body.expectedVersion) || body.expectedVersion < 0)
+    ) {
+      throw new AppError('expectedVersion must be a nonnegative integer', 400);
+    }
+    if (
+      update.language !== undefined &&
+      !['Sinhala', 'Tamil'].includes(update.language)
+    ) {
       throw new AppError('Language must be Sinhala or Tamil', 400);
     }
 
     const user = await User.findById(req.user.userId);
     if (!user) {
-      throw new AppError("User not found", 404);
+      throw new AppError('User not found', 404);
     }
 
+    if (
+      body.expectedVersion !== undefined &&
+      body.expectedVersion !== (user.__v || 0)
+    ) {
+      throw new AppError(
+        'Profile changed since it was loaded. Reload before saving again.',
+        409,
+        'PROFILE_CONFLICT',
+      );
+    }
     Object.assign(user, update);
 
-    await user.save();
+    await user.save({ w: 'majority', wtimeout: 5000 });
 
     successResponse(res, {
-      message: "Profile updated successfully",
+      message: 'Profile updated successfully',
       user: formatUserResponse(user),
+      profileVersion: user.__v || 0,
     });
   } catch (error) {
     next(error);

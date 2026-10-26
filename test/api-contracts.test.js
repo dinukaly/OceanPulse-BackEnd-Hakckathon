@@ -24,6 +24,7 @@ const messages = [10, 11, 12, 13, 14].map(n => ({ _id: id(n), senderId: id(1), r
 messages.push({ ...messages[0], _id: id(15), senderId: id(3), receiverId: id(2) });
 const comments = [20, 21, 22, 23].map(n => ({ _id: id(n), userId: id(2), username: 'user2', content: 'comment', createdAt: new Date() }));
 const posts = [30, 31, 32].map(n => ({ _id: id(n), userId: id(2), username: 'user2', content: 'post', comments, likes: 0, createdAt: new Date() }));
+posts[0].imageUrl = 'file:///private/legacy-example.jpg';
 const alerts = [40, 41, 42].map(n => ({ _id: id(n), userId: id(1), isHandled: false }));
 alerts.push({ _id: id(43), userId: id(2), isHandled: false });
 const undo = [];
@@ -146,6 +147,7 @@ test('message history preserves participant filtering, stable pages and bounded 
 test('posts, embedded comments and own SOS lists have bounded, traversable pages', async () => {
   const posts = await request('/community/posts?limit=2');
   assert.equal(posts.body.data.length, 2);
+  assert.ok(posts.body.data.every(post => post.imageUrl === ''));
   assert.deepEqual(posts.body.data[0].comments, []);
   assert.equal(lastQuery.projection, '-comments');
   const first = await request(`/community/posts/${id(30)}/comments?limit=2`);
@@ -157,6 +159,12 @@ test('posts, embedded comments and own SOS lists have bounded, traversable pages
   const own = await request('/sos/active?limit=2');
   assert.deepEqual(own.body.data.map(alert => alert._id), [id(42), id(41)]);
   assert.equal(own.body.pagination.hasMore, true);
+});
+
+test('legacy image references are withheld without modifying the stored source rows', async () => {
+  const result = await request('/community/posts?limit=50');
+  assert.equal(result.body.data.find(post => post.id === id(30)).imageUrl, '');
+  assert.equal(posts[0].imageUrl, 'file:///private/legacy-example.jpg');
 });
 
 test('malformed cursors, limits, IDs and oversized request fields are rejected', async () => {

@@ -66,7 +66,8 @@ async function run() {
   }
 
   const env = { ...process.env };
-  for (const key of ['AUTH', 'API', 'SOS', 'MESSAGING', 'JOURNEY']) {
+  env.NODE_ENV = 'test';
+  for (const key of ['AUTH', 'API', 'SOS', 'MESSAGING', 'JOURNEY', 'OPS']) {
     env[`${key}_TEST_MONGODB_URI`] = uri;
   }
   const files = readdirSync(new URL('../test/', import.meta.url))

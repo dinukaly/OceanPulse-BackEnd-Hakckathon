@@ -1,31 +1,7 @@
 import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-import path from 'path';
+import { fileURLToPath } from 'node:url';
+import { parseEnvironment } from './validation.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Configure dotenv with the path to the .env file
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
-
-export const config = {
-    port: process.env.PORT || 3000,
-    mongoUri: process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/oceanpulse_db",
-    jwtSecret: process.env.JWT_SECRET_KEY,
-    weatherApiKey: process.env.WEATHER_API_KEY,
-    sendgridApiKey: process.env.SENDGRID_API_KEY,
-    sendgridFromEmail: process.env.SENDGRID_FROM_EMAIL,
-    nodeEnv: process.env.NODE_ENV || 'development'
-};
-
-// Validate required environment variables
-const requiredEnvVars = ['JWT_SECRET_KEY'];
-
-requiredEnvVars.forEach(envVar => {
-    if (!process.env[envVar]) {
-        throw new Error(`Environment variable ${envVar} is required`);
-    }
-});
-
+dotenv.config({ path: fileURLToPath(new URL('../.env', import.meta.url)) });
+export const config = parseEnvironment(process.env);
 export default config;

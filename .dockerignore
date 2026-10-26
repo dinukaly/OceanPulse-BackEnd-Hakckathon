@@ -1,0 +1,15 @@
+.git
+.agents
+node_modules
+.env
+.env.*
+test
+test-support
+scripts/test-integration.js
+scripts/test-container.js
+*.md
+*.log
+coverage
+.expo
+dist
+compose.api.yml

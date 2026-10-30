@@ -1,108 +1,113 @@
-# 🌊 OceanPulse - Backend
+# OceanPulse API
 
-This is the backend server for **OceanPulse**, a mobile application that enhances the safety and communication of fishermen at sea. The backend is built with **Node.js**, **Express**, and **MongoDB**, following the **MVC (Model-View-Controller)** architecture to ensure scalability and maintainability.
+REST API and authenticated WebSocket service for the OceanPulse mobile app, built with Node.js, Express 5, MongoDB/Mongoose, and JWT authentication.
 
-## 🚀 Features
+## Features
 
-- 👤 User Authentication & Authorization  
-  - User registration, login, and logout  
-  - OTP-based account verification  
-  - Password reset flow  
-- 📄 Profile Management  
-  - View and update user profile information  
-- 🆘 Emergency Broadcast System  
-  - Fishermen can send emergency alerts to authorities or other users  
-- 🌦️ Real-time Weather Alerts  
-  - Server pushes location-based weather alerts to users  
-- 📍 Location Sharing  
-  - Users share their real-time GPS location  
-- 💬 **Chat System**  
-  - Real-time messaging using WebSocket (Socket.io)  
-- 🧑‍🤝‍🧑 **Community Forum**  
-  - Create public posts, comment, and like  
+- Account registration, email verification, sign-in, and password reset through SendGrid.
+- Profile management with version checks and a paginated user directory.
+- Direct messaging with retry protection, read receipts, unread counts, and WebSocket events.
+- Current weather from OpenWeather and hourly wave forecasts from Open-Meteo.
+- SOS location records with duplicate prevention and receipt lookup.
+- Text-only community posts, likes, and comments.
 
-## 🛠 Tech Stack
+SOS requests are stored in the database only. The API does not notify emergency responders or dispatch rescue services.
 
-- **Runtime**: Node.js
-- **Framework**: Express.js
-- **Database**: MongoDB + Mongoose
-- **Authentication**: JWT + OTP
-- **Real-Time Communication**: Socket.io
-- **Architecture**: MVC (Model-View-Controller)
-- **Environment Management**: dotenv
-- **Validation**: express-validator
+## Getting started
 
-## 📁 Folder Structure
+Install Node.js, npm, and a running MongoDB instance, then run:
 
-```
-src/
-├── controllers/    # Route handlers / business logic
-├── models/         # Mongoose data models
-├── routes/         # Express route definitions
-├── middleware/     # Custom middleware (auth, error handling)
-├── services/       # External API calls (weather, etc.)
-├── utils/          # Utility functions
-└── config/         # Database and app configuration
+```sh
+npm ci
 ```
 
-## 📲 Getting Started
+Copy `.env.example` to `.env`, set `JWT_SECRET_KEY`, and update the MongoDB connection and optional service credentials. The `.env` file is ignored by Git.
 
-### Prerequisites
-
-- Node.js & npm
-- MongoDB (local or Atlas)
-
-### Installation
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/yourusername/oceanpulse-backend.git
-cd oceanpulse-backend
-```
-
-2. Install dependencies:
-
-```bash
-npm install
-```
-
-3. Set environment variables in a `.env` file:
-
-```env
-PORT=5000
-MONGO_URI=your-mongodb-connection-string
-JWT_SECRET=your-jwt-secret
-```
-
-4. Run the server:
-
-```bash
+```sh
 npm start
 ```
 
-## 🧪 Testing
+The default API root is `http://localhost:3000/api/v1`. The server starts listening after MongoDB connects and required indexes are ready.
 
-You can test endpoints using Postman or Swagger.
+## Configuration
 
-## 📦 Deployment
+| Variable | Purpose |
+| --- | --- |
+| `JWT_SECRET_KEY` | Required JWT signing secret; at least 32 bytes in production. |
+| `MONGODB_URI` | MongoDB connection string. Defaults to `mongodb://127.0.0.1:27017/oceanpulse_db` in development; required in production. |
+| `HOST` / `PORT` | Listening address and port; defaults to `0.0.0.0:3000`. |
+| `NODE_ENV` | `development`, `test`, or `production`; defaults to `development`. |
+| `SENDGRID_API_KEY` | SendGrid key for account verification and password-reset emails. |
+| `SENDGRID_FROM_EMAIL` | Verified SendGrid sender address. Configure with the SendGrid key to enable email delivery. |
+| `WEATHER_API_KEY` | OpenWeather API key. Weather requests return 503 when it is missing. |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated exact HTTP(S) origins. Required in production; include the API origin used by Android WebSocket clients. Use `none` only for clients that omit Origin headers. |
+| `TRUST_PROXY` | Defaults to `false`; accepts trusted proxy IPs/CIDRs or `loopback`. |
+| `LOG_LEVEL` | `silent`, `error`, `warn`, or `info`; defaults to `info` outside tests. |
 
-You can deploy the app on Render, Railway, Heroku, or a VPS. Ensure environment variables are set and MongoDB is accessible.
+See `.env.example` for database timeout, readiness, and shutdown settings. Keep credentials out of source control. Email verification and reset require configured SendGrid delivery; other services can run without it.
 
-## 🧑‍💻 Contributing
+## API routes
 
-Contributions are welcome. Please fork the repo and open a PR. For significant changes, open an issue for discussion first.
+All paths below are relative to `/api/v1`.
 
-## 📄 License
+| Route group | Purpose |
+| --- | --- |
+| `/users` | Registration, verification, login, password reset, own profile, and user directory. |
+| `/messages` | Send/history, read acknowledgements, receipt recovery, and unread counts. |
+| `/weatherLogs` | Current weather lookup. |
+| `/riskPredictions` | Hourly wave-height forecasts; no safety rating is calculated. |
+| `/sosAlerts` | Record an SOS request and retrieve the authenticated user's receipts. |
+| `/communityAlerts` | Text posts, likes, and comments. |
+| `/boatLocations` | Own-location read/write; nearby discovery is disabled. |
 
-This project is licensed under the MIT License.
+Health endpoints:
 
-## 📬 Contact
+- `GET /health/live`: process liveness.
+- `GET /health/ready`: readiness to serve requests; returns 503 while unavailable.
 
-- Developer: Dinuka
-- Email: infodinukalk@gmail.com
-- Project: [OceanPulse Frontend](https://github.com/yourusername/oceanpulse-frontend)
+Protected routes require a valid access token:
 
----
+```http
+Authorization: Bearer <access-token>
+```
 
-Made with ❤️ to protect lives at sea.
+Authentication endpoints are under `/users`: `POST /register`, `/verify-otp`, `/resend-verification-otp`, `/login`, `/forgot-password`, `/verify-reset-otp`, and `/reset-password`. JSON requests use `Content-Type: application/json`.
+
+Successful REST responses use `{ "success": true, "data": ... }`; paginated lists also include pagination metadata. Failed requests use the corresponding HTTP error status and a JSON error response.
+
+WebSocket messaging connects at `/api/v1/messages/socket`. Connections must authenticate before receiving events; message writes remain REST requests.
+
+## Tests
+
+Run the test directory explicitly:
+
+```sh
+node --test test/*.test.js
+```
+
+Tests use controlled database, email, and provider substitutes where applicable. Real MongoDB suites are skipped unless their test configuration is supplied.
+
+For database integration tests, supply an explicit test connection string through `INTEGRATION_TEST_MONGODB_URI`, then run:
+
+```sh
+npm run test:integration
+```
+
+Alternatively, use an existing local MongoDB Docker container exposed on port 27017:
+
+```sh
+npm run test:integration -- --container <container-name>
+```
+
+The integration runner uses disposable databases and never falls back to the application database URI. Install dependencies in the sibling `OCEANPULSE-FRONTEND-HACKATHON` repository before running the mobile-client integration journeys.
+
+## Project structure
+
+- `index.js`: startup and shutdown lifecycle.
+- `app.js`: shared Express application and HTTP/WebSocket server setup.
+- `routes/` and `controller/`: HTTP routes and handlers.
+- `model/`: Mongoose schemas and indexes.
+- `middleware/`: authentication, validation, rate limits, and errors.
+- `services/` and `realtime/`: email, health checks, and messaging events.
+- `test/`: automated tests.
+- `Dockerfile` and `compose.api.yml`: API container configuration.

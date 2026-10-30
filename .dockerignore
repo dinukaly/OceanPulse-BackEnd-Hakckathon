@@ -7,6 +7,8 @@ test
 test-support
 scripts/test-integration.js
 scripts/test-container.js
+scripts/test-backup-restore.js
+scripts/device-acceptance.js
 *.md
 *.log
 coverage

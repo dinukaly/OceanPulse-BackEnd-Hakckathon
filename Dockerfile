@@ -1,6 +1,5 @@
 FROM node:24-bookworm-slim AS dependencies
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 

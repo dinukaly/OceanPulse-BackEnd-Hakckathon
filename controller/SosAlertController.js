@@ -1,32 +1,42 @@
 import SosAlert from "../model/SosAlertSchema.js";
 import { successResponse } from '../utils/responseHandler.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { actorId, requireMatchingIdentity } from '../utils/actor.js';
+import { jsonObject } from '../utils/validation.js';
+import { pagination, pageResult } from '../utils/pagination.js';
+import { sosReceipt, unconfirmedReceipt } from '../utils/sosReceipt.js';
 
 const saveSosMessage = async (req, res, next) => {
     try {
-        const { latitude, longitude, userId, username } = req.body;
+        const { latitude, longitude } = jsonObject(req.body);
+        const userId = requireMatchingIdentity(req, req.body.userId, req.body.username);
+        const username = req.user.username;
 
-        if (!latitude || !longitude || !userId || !username) {
-            throw new AppError('Latitude, longitude, userId, and username are required', 400);
+        if (typeof latitude !== 'number' || !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+            typeof longitude !== 'number' || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+            throw new AppError('Valid latitude and longitude are required', 400);
         }
 
-        const existingMessage = await SosAlert.findOne({ username, isHandled: false });
-        if (existingMessage) {
-            throw new AppError('Active SOS alert already exists for this user', 400);
+        const filter = { userId, isHandled: false };
+        let result;
+        try {
+            result = await SosAlert.findOneAndUpdate(filter, { $setOnInsert: {
+                userId, username, latitude, longitude, timestamp: new Date(), isHandled: false,
+            } }, { upsert: true, new: true, rawResult: true, runValidators: true,
+                writeConcern: { w: 'majority', wtimeout: 5000 }, maxTimeMS: 5000 });
+        } catch (error) {
+            if (error.code !== 11000 || (error.keyPattern && !error.keyPattern.userId)) throw error;
+            // Concurrent first inserts can race at the unique index. Return the winner,
+            // without performing a second insert or overwriting its receipt/location.
+            const existing = await SosAlert.findOne(filter).read('primary').readConcern('majority').maxTimeMS(5000);
+            if (!existing) throw unconfirmedReceipt();
+            successResponse(res, sosReceipt(existing, userId, true));
+            return;
         }
-
-        const newMessage = new SosAlert({
-            latitude,
-            longitude,
-            userId,
-            username,
-            timestamp: new Date(),
-            isHandled: false
-        });
-
-        const savedMessage = await newMessage.save();
-        
-        successResponse(res, savedMessage, 201);
+        if (result?.ok !== 1 || result.lastErrorObject?.n !== 1 || !result.value ||
+            typeof result.lastErrorObject?.updatedExisting !== 'boolean') throw unconfirmedReceipt();
+        const alreadyActive = result.lastErrorObject.updatedExisting;
+        successResponse(res, sosReceipt(result.value, userId, alreadyActive), alreadyActive ? 200 : 201);
     } catch (error) {
         next(error);
     }
@@ -34,22 +44,7 @@ const saveSosMessage = async (req, res, next) => {
 
 const updateSosStatus = async (req, res, next) => {
     try {
-        const { messageId } = req.params;
-        const { isHandled } = req.body;
-
-        if (typeof isHandled !== 'boolean') {
-            throw new AppError('isHandled status must be a boolean', 400);
-        }
-
-        const message = await SosAlert.findById(messageId);
-        if (!message) {
-            throw new AppError('SOS message not found', 404);
-        }
-
-        message.isHandled = isHandled;
-        await message.save();
-
-        successResponse(res, message);
+        throw new AppError('SOS status updates require a responder workflow', 403);
     } catch (error) {
         next(error);
     }
@@ -57,13 +52,23 @@ const updateSosStatus = async (req, res, next) => {
 
 const getActiveSosAlerts = async (req, res, next) => {
     try {
-        const alerts = await SosAlert.find({ isHandled: false })
-            .sort({ timestamp: -1 });
+        const { limit, filter } = pagination(req.query);
+        const alerts = await SosAlert.find({ userId: actorId(req), isHandled: false, ...filter })
+            .sort({ _id: -1 }).limit(limit + 1).lean();
 
-        successResponse(res, alerts);
+        const page = pageResult(alerts, limit);
+        successResponse(res, page.items, 200, { pagination: page.pagination });
     } catch (error) {
         next(error);
     }
 };
 
-export default { saveSosMessage, updateSosStatus, getActiveSosAlerts };
+const getCurrentReceipt = async (req, res, next) => {
+    try {
+        const userId = actorId(req);
+        const alert = await SosAlert.findOne({ userId, isHandled: false }).read('primary').readConcern('majority').maxTimeMS(5000);
+        successResponse(res, { receipt: alert ? sosReceipt(alert, userId, true) : null });
+    } catch (error) { next(error); }
+};
+
+export default { saveSosMessage, updateSosStatus, getActiveSosAlerts, getCurrentReceipt };

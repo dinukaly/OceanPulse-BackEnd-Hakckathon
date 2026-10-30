@@ -1,13 +1,17 @@
 import BoatLocation from "../model/BoatLocationSchema.js";
 import { successResponse } from '../utils/responseHandler.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { actorId, requireMatchingIdentity } from '../utils/actor.js';
+import { objectId, jsonObject } from '../utils/validation.js';
 
 const updateLocation = async (req, res, next) => {
     try {
-        const { userId, latitude, longitude } = req.body;
+        const { latitude, longitude } = jsonObject(req.body);
+        const userId = requireMatchingIdentity(req, req.body.userId);
 
-        if (!userId || !latitude || !longitude) {
-            throw new AppError('User ID, latitude, and longitude are required', 400);
+        if (typeof latitude !== 'number' || !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+            typeof longitude !== 'number' || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+            throw new AppError('Valid latitude and longitude are required', 400);
         }
 
         const location = await BoatLocation.findOneAndUpdate(
@@ -31,10 +35,13 @@ const updateLocation = async (req, res, next) => {
 
 const getBoatLocation = async (req, res, next) => {
     try {
-        const { userId } = req.params;
+        const userId = objectId(req.params.userId, 'user ID');
 
         if (!userId) {
             throw new AppError('User ID is required', 400);
+        }
+        if (userId !== actorId(req)) {
+            throw new AppError('Cannot read another user location', 403);
         }
 
         const location = await BoatLocation.findOne({ userId });
@@ -50,25 +57,7 @@ const getBoatLocation = async (req, res, next) => {
 
 const getNearbyBoats = async (req, res, next) => {
     try {
-        const { latitude, longitude, maxDistance = 10000 } = req.query; // maxDistance in meters, default 10km
-
-        if (!latitude || !longitude) {
-            throw new AppError('Latitude and longitude are required', 400);
-        }
-
-        const nearbyBoats = await BoatLocation.find({
-            location: {
-                $near: {
-                    $geometry: {
-                        type: 'Point',
-                        coordinates: [parseFloat(longitude), parseFloat(latitude)]
-                    },
-                    $maxDistance: parseInt(maxDistance)
-                }
-            }
-        });
-
-        successResponse(res, nearbyBoats);
+        throw new AppError('Nearby boat sharing is unavailable until a location-sharing policy is defined', 403);
     } catch (error) {
         next(error);
     }

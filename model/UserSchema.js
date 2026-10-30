@@ -22,6 +22,16 @@ const UserSchema = new mongoose.Schema({
   otp: {
     type: String,
   },
+  verificationCodeHash: String,
+  verificationPurpose: {
+    type: String,
+    enum: ['account', 'password-reset'],
+  },
+  verificationExpiresAt: Date,
+  verificationAttempts: { type: Number, default: 0 },
+  verificationSentAt: Date,
+  authVersion: { type: Number, default: 0 },
+  resetVersion: { type: Number, default: 0 },
 
   avator: {
     type: Object, //[{hash, resourceUrl, directory, filename}]
@@ -48,6 +58,7 @@ const UserSchema = new mongoose.Schema({
   //   name: String,
   //   phone: String,
   // },
-});
+}, { optimisticConcurrency: true });
 
+UserSchema.index({ isActive: 1, _id: -1 });
 export default mongoose.model("User", UserSchema);

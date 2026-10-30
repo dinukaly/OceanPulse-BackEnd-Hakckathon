@@ -1,52 +1,53 @@
-// express framework
-// body-parser
-// mongoose framework
+import { createLogger } from './utils/logger.js';
 
-import express from "express";
-import bodyParser from "body-parser";
-import mongoose from "mongoose";
-import cors from "cors";
-import { config } from './config/env.js';
-import { errorHandler } from './middleware/errorHandler.js';
-
-// Routes
-import userRoute from "./routes/UserRoute.js";
-import boatLocationRoute from "./routes/BoatLocationRoute.js";
-import messageRoute from "./routes/MessageRoute.js";
-import sosAlertRoute from "./routes/SosAlertRoute.js";
-import weatherLogRoute from "./routes/WeatherLogRoute.js";
-import riskPredictionRoute from "./routes/RiskPredictionRoute.js";
-import communityAlertRoute from "./routes/CommunityAlertRoute.js";
-
-const app = express();
-
-// Middleware
-app.use(express.json()); 
-// app.use(bodyParser.json());
-app.use(cors());
-
-// Database connection
-mongoose
-  .connect(config.mongoUri)
-  .then(() => console.log("Connected to the database"))
-  .catch((error) => console.log("Database connection error:", error));
-
-// Routes
-app.use("/api/v1/users", userRoute);
-app.use("/api/v1/boatLocations", boatLocationRoute);
-app.use("/api/v1/messages", messageRoute);
-app.use("/api/v1/sosAlerts", sosAlertRoute);
-app.use("/api/v1/weatherLogs", weatherLogRoute);
-app.use("/api/v1/riskPredictions", riskPredictionRoute);
-app.use("/api/v1/communityAlerts", communityAlertRoute);
-
-// Error handling middleware
-app.use(errorHandler);
-app.get('/api/v1/test', (req, res) => {
-  res.send({ message: 'Backend is reachable!' });
-});
-
-
-app.listen(config.port, () => {
-  console.log(`Server is running on port ${config.port}`);
-});
+let logger = createLogger();
+try {
+  // Import inside the guard so invalid environment settings get a safe startup log.
+  const { config } = await import('./config/env.js');
+  logger = createLogger({ level: config.logLevel });
+  const { startServer } = await import('./app.js');
+  const runtime = await startServer({ logger });
+  let stopping = false;
+  const stop = async (signal) => {
+    if (stopping) return;
+    stopping = true;
+    const deadline = setTimeout(() => {
+      logger.error('server.shutdown_failed', {
+        reason: signal,
+        errorKind: 'unavailable',
+      });
+      process.exit(1);
+    }, config.shutdownGraceMs + 2000);
+    deadline.unref();
+    try {
+      const result = await runtime.close(signal);
+      process.exitCode = result.forced ? 1 : 0;
+    } catch {
+      logger.error('server.shutdown_failed', {
+        reason: signal,
+        errorKind: 'unexpected',
+      });
+      process.exitCode = 1;
+    } finally {
+      clearTimeout(deadline);
+    }
+  };
+  process.once('SIGTERM', () => {
+    void stop('SIGTERM');
+  });
+  process.once('SIGINT', () => {
+    void stop('SIGINT');
+  });
+} catch (error) {
+  logger.error('server.start_failed', {
+    errorKind:
+      error.name === 'ConfigurationError'
+        ? 'configuration'
+        : error.code === 11000
+          ? 'conflict'
+          : 'unavailable',
+    setting: error.field,
+    errorCode: error.code,
+  });
+  process.exitCode = 1;
+}

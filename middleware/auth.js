@@ -1,35 +1,40 @@
-import jwt from 'jsonwebtoken';
 import { AppError } from './errorHandler.js';
-import { config } from '../config/env.js'
+import User from '../model/UserSchema.js';
+import mongoose from 'mongoose';
+import { verifyJwt } from '../utils/jwt.js';
 
 export const verifyToken = (token) => {
   try {
-    return jwt.verify(token, config.jwtSecret); 
+    return verifyJwt(token);
   } catch (error) {
     throw new AppError('Invalid token', 401); 
   }
 };
 
-export const generateToken = (userId, username) => {
-  return jwt.sign(
-    { userId, username },
-    config.jwtSecret,
-    { expiresIn: '90d' } 
-  );
+// HTTP and WebSocket sessions must enforce the same account/version policy.
+export const authenticateAccessToken = async (token) => {
+  const decoded = verifyToken(token);
+  if (decoded.purpose !== 'access' || !mongoose.isValidObjectId(decoded.userId)) {
+    throw new AppError('Invalid token', 401);
+  }
+  const user = await User.findById(decoded.userId).select('_id username isActive authVersion');
+  if (!user || !user.isActive || decoded.authVersion !== (user.authVersion || 0)) {
+    throw new AppError('Account is not active', 401);
+  }
+  return { userId: user._id.toString(), username: user.username, expiresAt: decoded.exp };
 };
 
-
-export const authenticateToken = (req, res, next) => {
+export const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; 
+  const token = /^Bearer (\S+)$/i.exec(authHeader || '')?.[1];
 
   if (!token) {
     return next(new AppError('Access denied. No token provided.', 401)); 
   }
 
   try {
-    const decoded = verifyToken(token); 
-    req.user = decoded; 
+    const user = await authenticateAccessToken(token);
+    req.user = { userId: user.userId, username: user.username };
     next(); 
   } catch (error) {
     next(error); 
